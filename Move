@@ -1,0 +1,109 @@
+using UnityEngine;
+using System.Collections;
+
+public class moveon : MonoBehaviour {
+	private DoneHashIDs hash;
+	public Animator ani;
+	public Rigidbody m_Rigidbody;
+	private Vector3 m_Move;
+	Vector3 m_GroundNormal;
+
+	float m_ForwardAmount;
+	float m_TurnAmount;
+	[SerializeField] float m_MovingTurnSpeed = 360;
+	[SerializeField] float m_StationaryTurnSpeed = 180;
+	[SerializeField] float m_MoveSpeedMultiplier = 1f;
+	[SerializeField] float m_AnimSpeedMultiplier = 1f;
+	[SerializeField] float m_GroundCheckDistance = 0.1f;
+	Vector3 t1;
+	Transform t2;
+	bool m_IsGrounded;
+	float m_OrigGroundCheckDistance;
+	// Use this for initialization
+	void Start () {
+		m_Rigidbody.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationY | RigidbodyConstraints.FreezeRotationZ;
+		m_OrigGroundCheckDistance = m_GroundCheckDistance;
+		if (Camera.main != null)
+		{
+			t2=Camera.main.transform;
+		}
+		else
+		{
+			Debug.LogWarning(
+				"Warning: no main camera found. Third person character needs a Camera tagged \"MainCamera\", for camera-relative controls.");
+			// we use self-relative controls in this case, which probably isn't what the user wants, but hey, we warned them!
+		}
+	}
+	
+	// Update is called once per frame
+	void FixedUpdate () {
+		float v = Input.GetAxis ("Vertical");
+		float h = Input.GetAxis ("Horizontal");
+
+
+		if (t2 != null) {
+			t1=Vector3.Scale(t2.forward,new Vector3(1,0,1)).normalized;
+			m_Move=v * t1 + h * t2.right ;
+		}
+		else
+		{
+			// we use world-relative directions in the case of no main camera
+			m_Move = v*Vector3.forward + h*Vector3.right;
+		}
+		Move (m_Move);
+
+	}
+	void Move(Vector3 move){
+		move = transform.InverseTransformDirection(move);
+		CheckGroundStatus();
+		m_TurnAmount = Mathf.Atan2(move.x, move.z);
+		m_ForwardAmount = move.z;
+		ApplyExtraTurnRotation();
+		UpdateAnimator(move);
+	}
+	void ApplyExtraTurnRotation()
+	{
+		// help the character turn faster (this is in addition to root rotation in the animation)
+		float turnSpeed = Mathf.Lerp(m_StationaryTurnSpeed, m_MovingTurnSpeed, m_ForwardAmount);
+		transform.Rotate(0, m_ForwardAmount * turnSpeed * Time.deltaTime, 0);
+	}
+	public void OnAnimatorMove()
+	{
+		if(Time.deltaTime>0)
+		{
+		Vector3 v = (ani.deltaPosition * m_MoveSpeedMultiplier) / Time.deltaTime;
+
+		// we preserve the existing y part of the current velocity.
+		v.y = m_Rigidbody.velocity.y;
+		m_Rigidbody.velocity = v;
+		}
+	}
+	void UpdateAnimator(Vector3 move)
+	{
+		ani.SetFloat ("Speed",m_ForwardAmount,0.1f,Time.deltaTime); // (0.1f )
+		ani.SetFloat ("AngularSpeed",m_TurnAmount,0.1f,Time.deltaTime);
+	}
+	void CheckGroundStatus()
+	{
+		//刪除之後浮在空中，但照樣旋轉。
+		RaycastHit hitInfo;
+		#if UNITY_EDITOR
+		// helper to visualise the ground check ray in the scene view
+		Debug.DrawLine(transform.position + (Vector3.up * 0.1f), transform.position + (Vector3.up * 0.1f) + (Vector3.down * m_GroundCheckDistance));
+		#endif
+		// 0.1f is a small offset to start the ray from inside the character
+		// it is also good to note that the transform position in the sample assets is at the base of the character
+		if (Physics.Raycast(transform.position + (Vector3.up * 0.1f), Vector3.down, out hitInfo, m_GroundCheckDistance))
+		{
+			m_GroundNormal = hitInfo.normal;
+			m_IsGrounded = true;
+			ani.applyRootMotion = true;
+		}
+		else
+		{
+			m_IsGrounded = false;
+			m_GroundNormal = Vector3.up;
+			ani.applyRootMotion = false;
+		}
+	}
+}
